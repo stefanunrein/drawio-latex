@@ -1,0 +1,343 @@
+%% drawio.sty
+%% Copyright 2026 Stefan Unrein
+%
+% This work may be distributed and/or modified under the
+% conditions of the LaTeX Project Public License, either version 1.3
+% of this license or (at your option) any later version.
+% The latest version of this license is in
+%   http://www.latex-project.org/lppl.txt
+% and version 1.3 or later is part of all distributions of LaTeX
+% version 2005/12/01 or later.
+%
+% This work has the LPPL maintenance status `maintained'.
+%
+% The Current Maintainer of this work is Stefan Unrein.
+%
+% This work consists of the files drawio.sty and
+% drawio-page-resolver.pl
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{drawio}[2026/03/19 draw.io package]
+
+\RequirePackage{graphicx}
+\RequirePackage{filemod}
+\RequirePackage{xstring}
+\RequirePackage{xparse}
+\RequirePackage{ifplatform}
+
+\makeatletter
+
+\def\drawio@exe{drawio}
+\def\drawio@perl{perl}
+\def\drawio@defaultclioptions{--crop --border 5}
+\def\drawio@curloptions{}
+\def\drawio@exportserver{}
+\def\drawio@resolver{drawio-page-resolve.pl}
+\def\drawio@resolverpath{}%resolved path for resolver script
+
+\newcommand{\drawiosetexe}[1]{\def\drawio@exe{#1}}
+\newcommand{\drawiosetperl}[1]{\def\drawio@perl{#1}}
+\newcommand{\drawiosetresolver}[1]{\def\drawio@resolver{#1}}
+\newcommand{\drawiosetdefaultclioptions}[1]{\def\drawio@defaultclioptions{#1}}
+\newcommand{\drawiosetexportserver}[1]{\def\drawio@exportserver{#1}}
+
+\newif\ifdrawioavailable
+\newread\drawio@read
+
+% --- run check once at document start ---
+\AtBeginDocument{
+  \drawio@checkshellescape
+
+  \def\drawio@result{}
+
+  \ifwindows
+    \immediate\write18{where \drawio@exe >nul 2>&1 && echo "YES" > drawio.check || echo "NO" > drawio.check}
+  \else
+    \immediate\write18{command -v \drawio@exe >/dev/null 2>&1 && echo "YES" > drawio.check || echo "NO" > drawio.check}
+  \fi
+
+  \IfFileExists{drawio.check}{
+    \openin\drawio@read=drawio.check
+    \read\drawio@read to \drawio@result
+    \closein\drawio@read
+    %\typeout{Content in drawio.check:'\drawio@result'}
+    \def\drawio@yes{YES }
+    \ifx\drawio@result\drawio@yes
+      \drawioavailabletrue
+    \else
+      \drawioavailablefalse
+    \fi
+  }{
+    \drawioavailablefalse
+  }
+
+  \ifdrawioavailable
+    \typeout{drawio: Found local drawio installation. Running in local mode.}
+  \else
+    \ifx\drawio@exportserver\empty
+      \PackageError{drawio}
+        {drawio executable not found and no export-server is set up!}
+        {Install drawio and ensure it is in PATH. Compile with -shell-escape. Alternatively provide a drawio-export-server with \\drawiosetexportserver\{http://my.server.com/drawio-converter/export\}}
+    \fi
+    \typeout{drawio: Did not find local drawio installation. Running in export-server mode.}
+  \fi
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \includedrawio[<include graphics options>][<drawio cli options>]{<drawio file>}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NewDocumentCommand{\includedrawio}{O{} O{\drawio@defaultclioptions} m}{
+  \drawio@run{#3}{#2}{}{#1}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \includedrawiopage[<include graphics options>][<drawio cli options>]{<drawio file>}{<page number/name>}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\NewDocumentCommand{\includedrawiopage}{O{} O{\drawio@defaultclioptions} m m}{
+  \drawio@run{#3}{#2}{#4}{#1}
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Main
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\drawio@run#1#2#3#4{% the actual working macro with #1:filename; #2:drawio cli options; #3:page number/name; #4:include graphics options
+  \def\drawio@target{#1}
+  \def\drawio@cliopts{#2}
+  \def\drawio@page{#3}
+
+  \edef\drawio@sourcefile{\drawio@target.drawio}
+
+  \typeout{drawio: Called for sourcefile '\drawio@sourcefile' and page '\drawio@page'}
+
+  \IfFileExists{\drawio@sourcefile}{}{
+    \PackageError{drawio}
+      {File '\drawio@sourcefile' does not exist}
+      {Check the file name or path passed to \string\includedrawio.}
+  }
+
+  \def\drawio@pageindex{}
+  \ifx\drawio@page\@empty
+    \edef\drawio@outfile{\drawio@target.drawio.pdf}
+    \def\drawio@pageoption{}
+    \typeout{drawio: No page, nothing to resolve.}
+  \else
+
+    \IfInteger{\drawio@page}{
+        % numeric page index
+        \edef\drawio@pageindex{\drawio@page}
+
+        \ifdrawioavailable
+          \typeout{drawio: Page '\drawio@page', nothing to resolve.}
+        \else
+          \PackageError{drawio}
+              {The provided page is '\drawio@page'. Integer page reference is only supported when using local drawio installation, you are running in server-exporter mode since local drawio is not available.}
+        \fi
+
+      }{% page name -> resolve to index
+        \edef\drawio@indexfile{\drawio@target.page-\drawio@page.drawio.pageindex}
+
+        \filemodCmp{\drawio@sourcefile}{\drawio@indexfile}{% Check if sourcefile is newer than indexfile
+          \drawio@resolveresolver
+          \typeout{drawio: Resolving with '\drawio@resolverpath'}
+          
+          \ifdrawioavailable
+            \def\drawio@resolvermode{index}
+          \else
+            \def\drawio@resolvermode{id}
+          \fi
+
+          \immediate\write18{% Run resolver script since the indexfile is older or not present
+            "\drawio@perl"\space "\drawio@resolverpath"\space
+            "\drawio@sourcefile"\space
+            "\drawio@page"\space "\drawio@resolvermode"\space > "\drawio@indexfile"
+          }
+
+          \openin\drawio@read="\drawio@indexfile"
+          \begingroup
+            \endlinechar=-1
+            \global\read\drawio@read to \drawio@pageindex
+          \endgroup
+          \closein\drawio@read
+          \typeout{drawio: Resolver response '\drawio@pageindex'.}
+
+          \expandafter\drawio@checkresolver\drawio@pageindex\@nil
+        }{
+          \typeout{drawio: Index file '\drawio@indexfile' already up to date.}
+        }
+
+      }
+
+    \edef\drawio@outfile{\drawio@target.page-\drawio@page.drawio.pdf}
+    \ifdrawioavailable
+      \edef\drawio@pageoption{--page-index \drawio@pageindex}
+    \else
+      \edef\drawio@pageoption{--data-urlencode "pageId=\drawio@pageindex"}
+    \fi
+
+  \fi
+
+  % Check if diagram is already up to date. If so, skip export
+  \filemodCmp{\drawio@sourcefile}{\drawio@outfile}{
+    
+      \ifdrawioavailable
+        \edef\drawio@commandcall{
+          "\drawio@exe"\space \drawio@cliopts\space \drawio@pageoption\space --export --format pdf --output "\drawio@outfile"\space "\drawio@sourcefile"
+        }
+      \else
+        \drawio@parseopts{\drawio@cliopts}
+        \edef\drawio@commandcall{
+          curl -sf -X POST "\drawio@exportserver" -H "Content-Type: application/x-www-form-urlencoded" --data-urlencode "format=pdf" \drawio@pageoption\space \drawio@curloptions\space --data-urlencode "xml=$(cat "\drawio@sourcefile")"   -o "\drawio@outfile"
+        }
+      \fi
+
+      \typeout{drawio: Exporting with call '\drawio@commandcall'}
+      \immediate\write18{\drawio@commandcall}
+  }{
+    \typeout{drawio: Export already up to date.}
+  }
+
+  \IfFileExists{\drawio@outfile}{% Verify of export was sucessful and call the actual \includegraphics
+    \includegraphics[#4]{\drawio@outfile}
+  }{
+    \PackageError{drawio}{Export failed}{Check drawio CLI and shell escape}
+  }
+}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Helper
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\def\drawio@checkresolver#1:#2\@nil{
+  \typeout{drawio: Resolver returned with '#1' and page '#2'}
+  \edef\drawio@status{#1}
+  \edef\drawio@pageindex{#2}
+  \def\drawio@ok{OK}
+  \ifx\drawio@status\drawio@ok
+  \else
+    \PackageError{drawio}
+      {Resolver script failed. Check if '\drawio@sourcefile' has a page called '\drawio@page'.}
+      {Resolver script failed. Resolver script response: \drawio@pageindex}
+  \fi
+}
+
+\def\drawio@resolveresolver{
+  % 1. If user/local file exists directly, use it.
+  \IfFileExists{\drawio@resolver}{
+    \edef\drawio@resolverpath{\drawio@resolver}
+  }{
+    % 2. Otherwise ask kpsewhich.
+    \def\drawio@resolverpath{}
+    \edef\drawio@resolverfile{\jobname.drawio.resolverpath}
+    \immediate\write18{
+      kpsewhich -format=texmfscripts "\drawio@resolver" > "\drawio@resolverfile"
+    }
+    \openin\drawio@read="\drawio@resolverfile"
+    \ifeof\drawio@read
+      \closein\drawio@read
+    \else
+      \begingroup
+        \endlinechar=-1
+        \global\read\drawio@read to \drawio@resolverpath
+      \endgroup
+      \closein\drawio@read
+    \fi
+  }
+  % 3. Final check: did we get a non-empty path?
+  \ifx\drawio@resolverpath\@empty
+    \PackageError{drawio}
+      {Could not locate resolver script '\drawio@resolver'}
+      {Set it manually or install it in the TeX scripts tree.}
+  \fi
+}
+
+
+\def\drawio@checkshellescape{
+  \ifdefined\pdfshellescape
+    \ifnum\pdfshellescape=1\relax
+      % OK: unrestricted shell escape
+    \else
+      \PackageError{drawio}
+        {Full shell escape is required}
+        {This package needs unrestricted shell escape to run perl and drawio.\MessageBreak
+         Your engine reports \string\pdfshellescape=\the\pdfshellescape.\MessageBreak
+         Run LaTeX with -shell-escape.}
+    \fi
+  \else
+    \PackageError{drawio}
+      {Cannot determine shell escape status}
+      {The primitive \string\pdfshellescape\space is not available.}
+  \fi
+}
+
+%%%%%% Connverter for curl options %%%%%%%%%%%%%%%%%
+\def\drawio@parseopts#1{
+  \def\drawio@curloptions{}
+  \edef\drawio@tmp{#1 \noexpand\@nil}
+  \expandafter\drawio@parsetoken\drawio@tmp
+}
+
+\def\drawio@parsetoken#1 #2\@nil{
+  \def\drawio@tokentmp{#1}
+  \ifx\drawio@tokentmp\@empty
+    \def\drawio@remaining{#2}
+    \drawio@checknext
+  \else
+    \drawio@stripdash#1\@nil
+    \def\drawio@remaining{#2}
+    \drawio@checkvalue
+  \fi
+}
+
+\def\drawio@stripdash--#1\@nil{
+  \def\drawio@currentkey{#1}
+}
+
+\def\drawio@checkvalue{
+  \expandafter\drawio@peekfirst\drawio@remaining\@nil
+}
+
+\def\drawio@peekfirst#1#2\@nil{
+  \def\drawio@firstchar{#1}
+  \def\drawio@dash{-}
+  \ifx\drawio@firstchar\drawio@dash
+    \drawio@appendcurl{\drawio@currentkey}{}
+    \edef\drawio@tmp{#1#2\noexpand\@nil}
+    \expandafter\drawio@parsetoken\drawio@tmp
+  \else
+    \ifx\drawio@firstchar\@nnil
+      \drawio@appendcurl{\drawio@currentkey}{}
+    \else
+      \edef\drawio@tmp{#1#2\noexpand\@nil}
+      \expandafter\drawio@parsevalue\drawio@tmp
+    \fi
+  \fi
+}
+
+\def\drawio@parsevalue#1 #2\@nil{
+  \drawio@appendcurl{\drawio@currentkey}{#1}
+  \def\drawio@remaining{#2}
+  \drawio@checknext
+}
+
+\def\drawio@checknext{
+  \ifx\drawio@remaining\@empty
+  \else
+    \edef\drawio@tmp{\drawio@remaining\noexpand\@nil}
+    \expandafter\drawio@parsetoken\drawio@tmp
+  \fi
+}
+
+\def\drawio@appendcurl#1#2{
+  \edef\drawio@tmpkey{#1}
+  \def\drawio@crop{crop}
+  \ifx\drawio@tmpkey\drawio@crop
+    \def\drawio@value{1}
+  \else
+    \edef\drawio@value{#2}
+  \fi
+  \xdef\drawio@curloptions{
+    \drawio@curloptions
+    --data-urlencode "\drawio@tmpkey=\drawio@value" %
+  }
+}
+
+\makeatother
