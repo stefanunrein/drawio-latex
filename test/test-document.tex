@@ -1,0 +1,69 @@
+\documentclass{article}
+\usepackage{graphicx}
+\usepackage{blindtext}
+\usepackage{../drawio}
+
+\drawiosetresolver{../drawio-page-resolve.pl}
+\drawiosetdefaultclioptions{  --crop   --border 0  }
+% \drawiosetexportserver{}
+
+\begin{document}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.8\textwidth]{example-image}
+  \caption{An example image}
+\end{figure}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \includedrawio[width=0.8\textwidth]{diagrams/My-Test}
+  \caption{Includedrawio (uses first page)}
+\end{figure}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \includedrawiopage[width=0.5\textwidth,angle=90,origin=c]{diagrams/My-Test}{Page1}
+  \caption{Includedrawio page 'Page1', rotated with includegraphics passthrough}
+\end{figure}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \includedrawiopage[width=0.5\textwidth]{diagrams/My-Test}{ThisPage}
+  \caption{Includedrawio page 'ThisPage'}
+\end{figure}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \includedrawiopage[width=1.0\textwidth]{diagrams/My-Test}{ThatPage3}
+  \caption{Includedrawio page 'ThatPage3'}
+\end{figure}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \fbox{\includedrawiopage[width=0.8\textwidth][--crop --border 10]{diagrams/My-Test}{Space Test}}
+  \caption{Includedrawio page 'Space Test' Page with a space in it and other drawio CLI options}
+\end{figure}
+
+\blindtext[2]
+
+\begin{figure}[ht]
+  \centering
+  \includedrawiopage[width=0.8\textwidth]{diagrams/My Test}{Space Test}
+  \caption{Includedrawio page 'Space Test' Page with a space in it, from a file with a space in it}
+\end{figure}
+
+
+\end{document}

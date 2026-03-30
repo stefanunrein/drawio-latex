@@ -9,7 +9,7 @@ A drawio LaTeX package
   * [x] Page reference by name
   * [x] Support for drawio-export-server
 * [ ] Fillout readme
-* [ ] Create example
+* [x] Create example
 * [ ] Create documentation
 * [ ] Make CI test pipeline
 * [ ] Make CI documentation pipeline
