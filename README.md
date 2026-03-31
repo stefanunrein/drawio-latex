@@ -8,7 +8,7 @@ The final goal of this project is to be included in the official CTAN LaTeX pack
 ## Set-Up
 Until this package is included in the official packages, you need to add the `drawio.sty` and the Perl script `drawio-page-resolve.pl` locally to your LaTeX document. Add the package as usual with:
 
-```
+```latex
 \usepackage{graphicx}
 \usepackage{drawio}
 ```
@@ -17,7 +17,7 @@ Note the requirement of the `graphicx` package. The exported diagrams will be ad
 
 In your preamble, you can specify the behavior with the following predefined commands:
 
-```
+```latex
 \drawiosetexe{path/to/drawio/executable} % default is "drawio" if it is part of the search PATH
 \drawiosetperl{path/to/perl/executable} % default is "perl" if it is part of the search PATH
 \drawiosetresolver{relative/or/absolute/path/to/drawio-page-resolve.pl} % default "drawio-page-resolve.pl" if it is in the same folder as your main tex file
@@ -35,14 +35,14 @@ This package provides two modes: the local mode, which uses your local draw.io i
 ### Including
 The package provides two include commands:
 
-```
+```latex
 \includedrawio[<includegraphics options>][<drawio CLI options>]{path/to/*.drawio}
 \includedrawiopage[<includegraphics options>][<drawio CLI options>]{path/to/*.drawio}{page}
 ```
 
 Include a diagram simply by calling:
 
-```
+```latex
 \includedrawio[width=0.8\textwidth]{diagrams/My-Diagram} % Note: the ending ".drawio" is not included and is assumed by the package
 \includedrawiopage[width=0.8\textwidth]{diagrams/My-Diagram}{My-Page}
 ```
